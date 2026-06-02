@@ -36,7 +36,7 @@ st.markdown("""
 
 def call_claude(api_key: str, resume: str, jd: str) -> dict:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-3-flash-preview")
 
     prompt = f"""..."""   # same prompt, don't touch
 
@@ -110,7 +110,7 @@ with col2:
 
 st.markdown("---")
 analyze_btn = st.button("🔍 Analyze Resume", type="primary", use_container_width=True)
-
+result = None
 # ── Results ───────────────────────────────────────────────────────────────────
 if analyze_btn:
     if not api_key.strip():
