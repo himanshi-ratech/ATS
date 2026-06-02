@@ -126,8 +126,10 @@ if analyze_btn:
     with st.spinner("🤖 Claude is analyzing your resume against the JD..."):
         try:
             result = call_claude(api_key, resume_text, jd_text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             st.error("❌ Parsing error — please try again.")
+            st.write("Raw response:")
+            st.code(response_text)
             st.stop()
         except Exception as e:
             if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
