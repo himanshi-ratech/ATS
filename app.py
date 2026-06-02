@@ -34,21 +34,89 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def call_claude(api_key: str, resume: str, jd: str) -> dict:
+# ── Core Analysis Function ────────────────────────────────────────────────────
+def analyze_resume(api_key: str, resume: str, jd: str) -> dict:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3-flash-preview")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
-    prompt = f"""..."""   # same prompt, don't touch
+    prompt = f"""
+You are an expert ATS (Applicant Tracking System) and career coach. Analyze the resume against the job description below and return a detailed JSON response.
+
+RESUME:
+{resume}
+
+JOB DESCRIPTION:
+{jd}
+
+Return ONLY a valid JSON object (no markdown, no backticks, no explanation) with exactly this structure:
+
+{{
+  "match_score": <integer 0-100, overall resume-to-JD match percentage>,
+
+  "matched_skills": [<list of skills/keywords from JD that ARE present in resume>],
+  "missing_skills": [<list of required skills/keywords from JD that are NOT in resume>],
+  "optional_missing": [<list of nice-to-have/preferred skills from JD not in resume>],
+
+  "strengths": [<3-5 specific strengths of this resume for this JD>],
+  "weaknesses": [<3-5 specific gaps or weaknesses of this resume for this JD>],
+
+  "optimized_summary": "<2-3 sentence professional summary rewritten to target this JD, using keywords from it>",
+
+  "optimized_tech_skills": [
+    "<Category: skill1, skill2, skill3>",
+    "<Category: skill1, skill2>"
+  ],
+
+  "optimized_soft_skills": [<5-7 relevant soft skills for this JD as plain strings>],
+
+  "project_recommendations": [
+    {{
+      "title": "<project name>",
+      "stack": "<tech stack to use>",
+      "description": "<what to build and why it fits this JD>",
+      "bullets": [
+        "<resume bullet 1 with metrics>",
+        "<resume bullet 2 with metrics>",
+        "<resume bullet 3 with metrics>"
+      ]
+    }},
+    {{
+      "title": "<project name>",
+      "stack": "<tech stack to use>",
+      "description": "<what to build and why it fits this JD>",
+      "bullets": [
+        "<resume bullet 1 with metrics>",
+        "<resume bullet 2 with metrics>",
+        "<resume bullet 3 with metrics>"
+      ]
+    }}
+  ],
+
+  "ats_tips": [<5 specific actionable tips to improve ATS score for this exact JD>]
+}}
+
+Rules:
+- match_score must be an integer, not a string
+- All lists must have at least 1 item
+- project_recommendations must have exactly 2 objects
+- optimized_summary must reference specific skills/tools from the JD
+- Each bullet in projects must contain a number or metric
+- Return ONLY the JSON object — absolutely no text before or after it
+"""
 
     response = model.generate_content(prompt)
     raw = response.text.strip()
-    raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-    
+
+    # Strip markdown code fences if model wraps in them anyway
+    raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
+
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"JSON_PARSE_ERROR\n\n{raw}") from e
+        raise ValueError(f"JSON_PARSE_ERROR: {e}\n\nRaw response:\n{raw}") from e
 
+
+# ── Helper Functions ──────────────────────────────────────────────────────────
 def score_color(score):
     if score >= 80: return "score-high"
     if score >= 60: return "score-mid"
@@ -64,15 +132,15 @@ def score_emoji(score):
 with st.sidebar:
     st.markdown("## ⚙️ Setup")
     api_key = st.text_input(
-        "Anthropic API Key",
+        "Google Gemini API Key",
         type="password",
-        placeholder="sk-ant-...",
-        help="Get your free key at console.anthropic.com"
+        placeholder="AIza...",
+        help="Get your free key at aistudio.google.com/app/apikey"
     )
     st.markdown("---")
     st.markdown("### 📌 How to use")
     st.markdown("""
-1. Enter your **Anthropic API key**
+1. Enter your **Gemini API key**
 2. Paste your **resume text**
 3. Paste the **Job Description**
 4. Click **Analyze Resume**
@@ -80,8 +148,8 @@ with st.sidebar:
     """)
     st.markdown("---")
     st.markdown("### 💰 Cost")
-    st.markdown("1 scan ≈ **\\$0.002**  \n\\$5 free credits = **~2500 scans**")
-    st.markdown("[Get API Key →](https://console.anthropic.com)", unsafe_allow_html=False)
+    st.markdown("Gemini 1.5 Flash is **free** on the free tier  \nup to **15 requests/min**")
+    st.markdown("[Get API Key →](https://aistudio.google.com/app/apikey)")
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("📄 Personal ATS — Resume Analyzer")
@@ -113,11 +181,12 @@ with col2:
 
 st.markdown("---")
 analyze_btn = st.button("🔍 Analyze Resume", type="primary", use_container_width=True)
-result = None
+
 # ── Results ───────────────────────────────────────────────────────────────────
 if analyze_btn:
+    # Validation
     if not api_key.strip():
-        st.error("❌ Enter your Anthropic API key in the sidebar.")
+        st.error("❌ Enter your Gemini API key in the sidebar.")
         st.stop()
     if not resume_text.strip():
         st.error("❌ Please paste your resume text.")
@@ -126,22 +195,28 @@ if analyze_btn:
         st.error("❌ Please paste the Job Description.")
         st.stop()
 
-    with st.spinner("🤖 Claude is analyzing your resume against the JD..."):
+    with st.spinner("🤖 Gemini is analyzing your resume against the JD..."):
         try:
-            result = call_claude(api_key, resume_text, jd_text)
+            result = analyze_resume(api_key, resume_text, jd_text)
         except ValueError as e:
-            st.error("❌ Parsing error")
-            st.code(str(e))
+            st.error("❌ Failed to parse AI response. Please try again.")
+            with st.expander("Debug info"):
+                st.code(str(e))
             st.stop()
-        # except Exception as e:
-        #     if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
-        #         st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
-        #         st.stop()
         except Exception as e:
-            st.error(f"❌ Error: {e}")
+            err_str = str(e).lower()
+            if "api_key" in err_str or "invalid" in err_str or "permission" in err_str or "403" in err_str:
+                st.error("❌ Invalid Gemini API key. Get yours at aistudio.google.com/app/apikey")
+            elif "quota" in err_str or "429" in err_str:
+                st.error("❌ API quota exceeded. Wait a minute and try again (free tier: 15 req/min).")
+            elif "network" in err_str or "connection" in err_str:
+                st.error("❌ Network error. Check your internet connection.")
+            else:
+                st.error(f"❌ Unexpected error: {e}")
             st.stop()
 
-    score   = result.get("match_score", 0)
+    # ── Safely read result fields ─────────────────────────────────────────────
+    score   = int(result.get("match_score", 0))
     matched = result.get("matched_skills", [])
     missing = result.get("missing_skills", [])
 
@@ -179,27 +254,28 @@ if analyze_btn:
         st.markdown(f'<div class="section-card">{pills or "<i>None detected</i>"}</div>', unsafe_allow_html=True)
     with g2:
         st.markdown("### ❌ Missing Skills")
-        miss  = "".join(f'<span class="pill-red">✗ {s}</span>' for s in missing)
-        opt   = "".join(f'<span class="pill-amber">△ {s} (optional)</span>' for s in result.get("optional_missing", []))
-        st.markdown(f'<div class="section-card">{miss}{opt or ("<i>None — great match!</i>" if not miss else "")}</div>', unsafe_allow_html=True)
+        miss = "".join(f'<span class="pill-red">✗ {s}</span>' for s in missing)
+        opt  = "".join(f'<span class="pill-amber">△ {s} (optional)</span>' for s in result.get("optional_missing", []))
+        no_miss_msg = "<i>None — great match!</i>" if not miss and not opt else ""
+        st.markdown(f'<div class="section-card">{miss}{opt}{no_miss_msg}</div>', unsafe_allow_html=True)
 
     # Strengths & weaknesses
     sw1, sw2 = st.columns(2)
     with sw1:
         st.markdown("### 💪 Strengths")
         html = "".join(f"<p>✅ {p}</p>" for p in result.get("strengths", []))
-        st.markdown(f'<div class="section-card">{html}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card">{html or "<i>No data</i>"}</div>', unsafe_allow_html=True)
     with sw2:
         st.markdown("### ⚠️ Areas to Improve")
         html = "".join(f"<p>⚠️ {p}</p>" for p in result.get("weaknesses", []))
-        st.markdown(f'<div class="section-card">{html}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card">{html or "<i>No data</i>"}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("## ✍️ Optimized Resume Sections")
     st.markdown("*Copy these directly into your resume — tailored for this specific JD*")
 
     # Summary
-    st.markdown("### 📝 Summary")
+    st.markdown("### 📝 Professional Summary")
     summary = result.get("optimized_summary", "")
     st.markdown(f'<div class="section-card"><p>{summary}</p></div>', unsafe_allow_html=True)
     st.code(summary, language=None)
@@ -207,32 +283,50 @@ if analyze_btn:
     # Tech skills
     st.markdown("### 🛠️ Technical Skills")
     tech = result.get("optimized_tech_skills", [])
-    st.markdown(f'<div class="section-card">{"".join(f"<p>• {s}</p>" for s in tech)}</div>', unsafe_allow_html=True)
-    st.code("\n".join(f"• {s}" for s in tech), language=None)
+    if tech:
+        st.markdown(f'<div class="section-card">{"".join(f"<p>• {s}</p>" for s in tech)}</div>', unsafe_allow_html=True)
+        st.code("\n".join(f"• {s}" for s in tech), language=None)
+    else:
+        st.info("No technical skills data returned.")
 
     # Soft skills
     st.markdown("### 🤝 Soft Skills")
     soft = result.get("optimized_soft_skills", [])
-    pills = "".join(f'<span class="pill-green">{s}</span>' for s in soft)
-    st.markdown(f'<div class="section-card">{pills}</div>', unsafe_allow_html=True)
-    st.code(" | ".join(soft), language=None)
+    if soft:
+        pills = "".join(f'<span class="pill-green">{s}</span>' for s in soft)
+        st.markdown(f'<div class="section-card">{pills}</div>', unsafe_allow_html=True)
+        st.code(" | ".join(soft), language=None)
+    else:
+        st.info("No soft skills data returned.")
 
     st.markdown("---")
     st.markdown("## 🚀 Project Recommendations")
     st.markdown("*Build these to strengthen your profile for this specific role:*")
 
-    for i, proj in enumerate(result.get("project_recommendations", []), 1):
-        with st.expander(f"📁 {i}. {proj.get('title','')}  ·  {proj.get('stack','')}"):
-            st.markdown(f"**What to build:** {proj.get('description','')}")
-            st.markdown("**Resume-ready bullets:**")
-            for b in proj.get("bullets", []):
-                st.markdown(f"- {b}")
-            entry = f"**{proj['title']}** | {proj['stack']} | [GitHub](#)\n" + "\n".join(f"• {b}" for b in proj.get("bullets",[]))
-            st.code(entry, language=None)
+    projects = result.get("project_recommendations", [])
+    if projects:
+        for i, proj in enumerate(projects, 1):
+            title   = proj.get("title", f"Project {i}")
+            stack   = proj.get("stack", "")
+            desc    = proj.get("description", "")
+            bullets = proj.get("bullets", [])
+            with st.expander(f"📁 {i}. {title}  ·  {stack}"):
+                st.markdown(f"**What to build:** {desc}")
+                st.markdown("**Resume-ready bullets:**")
+                for b in bullets:
+                    st.markdown(f"- {b}")
+                entry = f"**{title}** | {stack} | [GitHub](#)\n" + "\n".join(f"• {b}" for b in bullets)
+                st.code(entry, language=None)
+    else:
+        st.info("No project recommendations returned.")
 
     st.markdown("---")
     st.markdown("### 💡 ATS Tips for this JD")
-    tips = "".join(f"<p>💡 {t}</p>" for t in result.get("ats_tips", []))
-    st.markdown(f'<div class="section-card">{tips}</div>', unsafe_allow_html=True)
+    tips = result.get("ats_tips", [])
+    if tips:
+        tips_html = "".join(f"<p>💡 {t}</p>" for t in tips)
+        st.markdown(f'<div class="section-card">{tips_html}</div>', unsafe_allow_html=True)
+    else:
+        st.info("No ATS tips returned.")
 
     st.success("✅ Done! Copy any section above directly into your resume.")
