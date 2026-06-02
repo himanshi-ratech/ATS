@@ -37,7 +37,7 @@ st.markdown("""
 # ── Core Analysis Function ────────────────────────────────────────────────────
 def analyze_resume(api_key: str, resume: str, jd: str) -> dict:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-3-flash-preview")
 
     prompt = f"""
 You are an expert ATS (Applicant Tracking System) and career coach. Analyze the resume against the job description below and return a detailed JSON response.
