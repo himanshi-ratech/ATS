@@ -1,5 +1,5 @@
 import streamlit as st
-import anthropic
+import google.generativeai as genai
 import json
 import re
 
@@ -35,46 +35,13 @@ st.markdown("""
 
 
 def call_claude(api_key: str, resume: str, jd: str) -> dict:
-    client = anthropic.Anthropic(api_key=api_key)
-    prompt = f"""
-You are an expert ATS (Applicant Tracking System) and career coach specializing in data science roles.
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
-Analyze the resume against the job description and return ONLY a valid JSON object — no preamble, no markdown fences.
+    prompt = f"""..."""   # same prompt, don't touch
 
-RESUME:
-{resume}
-
-JOB DESCRIPTION:
-{jd}
-
-Return exactly this JSON structure:
-{{
-  "match_score": <integer 0-100>,
-  "matched_skills": ["skill1", "skill2"],
-  "missing_skills": ["skill1", "skill2"],
-  "optional_missing": ["skill1"],
-  "strengths": ["point1", "point2", "point3"],
-  "weaknesses": ["point1", "point2", "point3"],
-  "optimized_summary": "<2-3 sentence summary tailored exactly to this JD>",
-  "optimized_tech_skills": ["<Category> — <skill1>, <skill2>"],
-  "optimized_soft_skills": ["skill1", "skill2", "skill3", "skill4", "skill5"],
-  "project_recommendations": [
-    {{
-      "title": "<Project title>",
-      "stack": "<Tech stack>",
-      "description": "<1 line what to build>",
-      "bullets": ["<bullet 1 with metric>", "<bullet 2>", "<bullet 3>"]
-    }}
-  ],
-  "ats_tips": ["tip1", "tip2", "tip3"]
-}}
-"""
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = message.content[0].text.strip()
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
     raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
     return json.loads(raw)
 
@@ -162,8 +129,9 @@ if analyze_btn:
         except json.JSONDecodeError:
             st.error("❌ Parsing error — please try again.")
             st.stop()
-        except anthropic.AuthenticationError:
-            st.error("❌ Invalid API key. Check at console.anthropic.com")
+        except Exception as e:
+        if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
+            st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
             st.stop()
         except Exception as e:
             st.error(f"❌ Error: {e}")
