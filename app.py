@@ -130,9 +130,9 @@ if analyze_btn:
             st.error("❌ Parsing error — please try again.")
             st.stop()
         except Exception as e:
-        if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
-            st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
-            st.stop()
+            if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
+                st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
+                st.stop()
         except Exception as e:
             st.error(f"❌ Error: {e}")
             st.stop()
