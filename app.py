@@ -43,8 +43,11 @@ def call_claude(api_key: str, resume: str, jd: str) -> dict:
     response = model.generate_content(prompt)
     raw = response.text.strip()
     raw = re.sub(r"^```json|^```|```$", "", raw, flags=re.MULTILINE).strip()
-    return json.loads(raw)
-
+    
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON_PARSE_ERROR\n\n{raw}") from e
 
 def score_color(score):
     if score >= 80: return "score-high"
@@ -126,15 +129,14 @@ if analyze_btn:
     with st.spinner("🤖 Claude is analyzing your resume against the JD..."):
         try:
             result = call_claude(api_key, resume_text, jd_text)
-        except json.JSONDecodeError as e:
-            st.error("❌ Parsing error — please try again.")
-            st.write("Raw response:")
-            st.code(response_text)
+        except ValueError as e:
+            st.error("❌ Parsing error")
+            st.code(str(e))
             st.stop()
-        except Exception as e:
-            if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
-                st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
-                st.stop()
+        # except Exception as e:
+        #     if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower():
+        #         st.error("❌ Invalid Gemini API key. Check at aistudio.google.com")
+        #         st.stop()
         except Exception as e:
             st.error(f"❌ Error: {e}")
             st.stop()
